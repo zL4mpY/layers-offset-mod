@@ -21,7 +21,7 @@ It also supports changing the editor layer 2 property as well.
 
 ## Compatibility
 
-I have many editor mods installed and I never ran into any issues with them. If there is any incompatibility, let me know by creating an issue on [GitHub repository](https://github.com/zL4mpY/clone_and_move_mod) or writing me in Discord DMs (eni.meow).
+I have many editor mods installed and I never ran into any issues with them. If there is any incompatibility, let me know by creating an issue on [GitHub repository](https://github.com/zL4mpY/layers-offset-mod) or writing me in Discord DMs (eni.meow).
 
 ## Keybinds
 
@@ -29,7 +29,7 @@ The mod has a keybind to quickly open the menu if you need. It can be configured
 
 ## Issues
 
-If the mod has any issues or even makes the game crash, please let me know about it by creating an issue on [GitHub repository](https://github.com/zL4mpY/clone_and_move_mod) or writing me in Discord DMs (eni.meow).
+If the mod has any issues or even makes the game crash, please let me know about it by creating an issue on [GitHub repository](https://github.com/zL4mpY/layers-offset-mod) or writing me in Discord DMs (eni.meow).
 
 ## Credits
 
