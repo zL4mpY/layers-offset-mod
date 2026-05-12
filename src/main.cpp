@@ -3,6 +3,24 @@
 
 using namespace geode::prelude;
 
+bool vecContains(std::vector<int> vec, int val) {
+    for (int i : vec) {
+        if (i == val) return true;
+    }
+
+    return false;
+}
+
+bool showWarning = true;
+
+$on_mod(Loaded) {
+    showWarning = Mod::get()->getSettingValue<bool>("show-warning");
+
+    listenForSettingChanges<bool>("show-warning", [](bool value) {
+        showWarning = value;
+    });
+}
+
 class ReoffsetLayersPopup : public geode::Popup {
 protected:
     bool init() {
@@ -27,11 +45,18 @@ protected:
         this->reoffsetCountField->setPosition(center2 + ccp(0, -20));
 
         this->editorLayer2Toggle = CCMenuItemToggler::createWithStandardSprites(this, nullptr, 0.5f);
-        this->editorLayer2Toggle->setPosition(center2 + ccp(85.f, 0));
+        this->editorLayer2Toggle->setPosition(center2 + ccp(85.f, 20.f));
 
         auto editorLayer2ToggleLabel = CCLabelBMFont::create("Editor layer 2", "goldFont.fnt");
         editorLayer2ToggleLabel->setScale(0.2f);
-        editorLayer2ToggleLabel->setPosition(center2 + ccp(85.f, 15.f));
+        editorLayer2ToggleLabel->setPosition(center2 + ccp(85.f, 35.f));
+
+        this->onlySelectedToggle = CCMenuItemToggler::createWithStandardSprites(this, nullptr, 0.5f);
+        this->onlySelectedToggle->setPosition(center2 + ccp(85.f, -20.f));
+
+        auto onlySelectedToggleLabel = CCLabelBMFont::create("Only selected objects", "goldFont.fnt");
+        onlySelectedToggleLabel->setScale(0.15f);
+        onlySelectedToggleLabel->setPosition(center2 + ccp(85.f, -5.f));
 
         auto confirmButtonSprite = ButtonSprite::create("Confirm");
         auto confirmButton = CCMenuItemSpriteExtra::create(confirmButtonSprite, this, menu_selector(ReoffsetLayersPopup::onConfirm));
@@ -40,14 +65,33 @@ protected:
         m_mainLayer->addChild(this->layersField);
         m_mainLayer->addChild(this->reoffsetCountField);
         m_mainLayer->addChild(editorLayer2ToggleLabel);
-
-        m_buttonMenu->addChild(editorLayer2Toggle);
+        m_mainLayer->addChild(onlySelectedToggleLabel);
+        
+        m_buttonMenu->addChild(this->onlySelectedToggle);
+        m_buttonMenu->addChild(this->editorLayer2Toggle);
         m_buttonMenu->addChild(confirmButton);
 
         return true;
     }
 
     void onConfirm(CCObject* sender) {
+        if (showWarning) {
+            geode::createQuickPopup(
+                "Warning", 
+                "This action <cr>cannot</c> be undone. Do you <cy>really</c> want to proceed?",
+                "No", "Yes",
+                [this, sender](auto, bool btn2) {
+                    if (btn2) {
+                        if (perform()) this->onClose(sender);
+                    }
+                }
+            );
+        } else {
+            if (perform()) this->onClose(sender);
+        }
+    }
+
+    bool perform() {
         bool layerFieldGood = true;
         bool reoffsetFieldGood = true;
         std::vector<int> layersToAffect;
@@ -57,6 +101,7 @@ protected:
         auto layersFieldValue = this->layersField->getString();
         auto reoffsetCountFieldValue = this->reoffsetCountField->getString();
         auto editorLayer2 = this->editorLayer2Toggle->isToggled();
+        auto onlySelected = this->onlySelectedToggle->isToggled();
 
         // validating layers field
         layersFieldValue = geode::utils::string::replace(layersFieldValue, " ", "");
@@ -106,7 +151,7 @@ protected:
                     }
 
                     // if the layer isn't added = add it
-                    if (std::find(layersToAffect.begin(), layersToAffect.end(), i) == layersToAffect.end()) layersToAffect.push_back(i);
+                    if (!vecContains(layersToAffect, i)) layersToAffect.push_back(i);
                 }
                 
                 if (!layerFieldGood) break;
@@ -129,13 +174,13 @@ protected:
 
 
                 // else = layerFieldGood
-                if (std::find(layersToAffect.begin(), layersToAffect.end(), layer) == layersToAffect.end()) layersToAffect.push_back(layer);
+                if (!vecContains(layersToAffect, layer)) layersToAffect.push_back(layer);
             }
         }
 
         if (!layerFieldGood) {
             geode::Notification::create("The layer field is invalid.\nPlease ensure their format follows the examples' format.\n(ex. 0, 1, 4-6, 7-9)", NotificationIcon::Error, 3.f)->show();
-            return;
+            return false;
         }
 
         // validating reoffset field (nothing really to validate but saving the boolean for probable future updates)
@@ -152,143 +197,146 @@ protected:
 
         if (!reoffsetFieldGood) {
             geode::Notification::create("The reoffset field is invalid.\nPlease ensure its format follows the examples' format.\n(ex. 1, -1, 2, -3)", NotificationIcon::Error, 3.f)->show();
-            return;
+            return false;
         }
 
         int reoffsetValue = *reoffsetValueRes;
         
         auto allObjects = lel->getAllObjects();
-        auto originalObjects = CCArray::create();
-        
-        // finding objects we need to affect
-        for (int i = 0 ; i < allObjects->count() ; ++i) {
-            auto* gameObject = typeinfo_cast<GameObject*>(allObjects->objectAtIndex(i));
 
-            if (!gameObject) {
-                auto* startposObject = typeinfo_cast<StartPosObject*>(allObjects->objectAtIndex(i));
-				if (!startposObject) {
-					FLAlertLayer::create("Error", "Unknown object type found. Please let the developer know about this bug.", "OK")->show();
-					return;
-				}
-                
-                if (editorLayer2) {
-                    if (std::find(layersToAffect.begin(), layersToAffect.end(), startposObject->m_editorLayer2) != layersToAffect.end()) originalObjects->addObject(startposObject);
-                } else {
-                    if (std::find(layersToAffect.begin(), layersToAffect.end(), startposObject->m_editorLayer) != layersToAffect.end()) originalObjects->addObject(startposObject);
+        log::debug("Reoffsetting layers {} by {}", fmt::join(layersToAffect, ", "), reoffsetValue);
+
+        int affectedObjects = 0;
+
+        if (!onlySelected) {
+            for (int i = 0 ; i < allObjects->count() ; ++i) {
+                auto* gameObject = typeinfo_cast<GameObject*>(allObjects->objectAtIndex(i));
+
+                if (!gameObject) {
+                    auto* startposObject = typeinfo_cast<StartPosObject*>(allObjects->objectAtIndex(i));
+                    if (!startposObject) {
+                        FLAlertLayer::create("Error", "Unknown object type found. Please let the developer know about this bug.", "OK")->show();
+                        return false;
+                    }
+                    
+                    if (editorLayer2) {
+                        if (vecContains(layersToAffect, startposObject->m_editorLayer2)) {
+                            if (startposObject->m_editorLayer2 + reoffsetValue >= 0) {
+                                startposObject->m_editorLayer2 += reoffsetValue;
+                            } else {
+                                startposObject->m_editorLayer2 = 0;
+                            }
+
+                            affectedObjects++;
+                        }
+                    } else {
+                        if (vecContains(layersToAffect, startposObject->m_editorLayer)) {
+                            if (startposObject->m_editorLayer + reoffsetValue >= 0) {
+                                startposObject->m_editorLayer += reoffsetValue;
+                            } else {
+                                startposObject->m_editorLayer = 0;
+                            }
+
+                            affectedObjects++;
+                        }
+                    }
+
+                    continue;
                 }
 
-                continue;
-            }
+                if (editorLayer2) {
+                    if (vecContains(layersToAffect, gameObject->m_editorLayer2)) {
+                        if (gameObject->m_editorLayer2 + reoffsetValue >= 0) {
+                            gameObject->m_editorLayer2 += reoffsetValue;
+                        } else {
+                            gameObject->m_editorLayer2 = 0;
+                        }
 
-            if (editorLayer2) {
-                if (std::find(layersToAffect.begin(), layersToAffect.end(), gameObject->m_editorLayer2) != layersToAffect.end()) originalObjects->addObject(gameObject);
-            } else {
-                if (std::find(layersToAffect.begin(), layersToAffect.end(), gameObject->m_editorLayer) != layersToAffect.end()) originalObjects->addObject(gameObject);
+                        affectedObjects++;
+                    }
+                } else {
+                    if (vecContains(layersToAffect, gameObject->m_editorLayer)) {
+                        if (gameObject->m_editorLayer + reoffsetValue >= 0) {
+                            gameObject->m_editorLayer += reoffsetValue;
+                        } else {
+                            gameObject->m_editorLayer = 0;
+                        }
+
+                        affectedObjects++;
+                    }
+                }
+            }
+        } else {
+            auto selectedObjs = lel->m_editorUI->getSelectedObjects();
+
+            for (int i = 0 ; i < selectedObjs->count() ; ++i) {
+                auto* gameObject = typeinfo_cast<GameObject*>(selectedObjs->objectAtIndex(i));
+
+                if (!gameObject) {
+                    auto* startposObject = typeinfo_cast<StartPosObject*>(selectedObjs->objectAtIndex(i));
+                    if (!startposObject) {
+                        FLAlertLayer::create("Error", "Unknown object type found. Please let the developer know about this bug.", "OK")->show();
+                        return false;
+                    }
+
+                    if (editorLayer2) {
+                        if (vecContains(layersToAffect, startposObject->m_editorLayer2)) {
+                            if (startposObject->m_editorLayer2 + reoffsetValue >= 0) {
+                                startposObject->m_editorLayer2 += reoffsetValue;
+                            } else {
+                                startposObject->m_editorLayer2 = 0;
+                            }
+
+                            affectedObjects++;
+                        }
+                    } else {
+                        if (vecContains(layersToAffect, startposObject->m_editorLayer)) {
+                            if (startposObject->m_editorLayer + reoffsetValue >= 0) {
+                                startposObject->m_editorLayer += reoffsetValue;
+                            } else {
+                                startposObject->m_editorLayer = 0;
+                            }
+
+                            affectedObjects++;
+                        }
+                    }
+                    
+                    continue;
+                }
+
+                if (editorLayer2) {
+                    if (vecContains(layersToAffect, gameObject->m_editorLayer2)) {
+                        if (gameObject->m_editorLayer2 + reoffsetValue >= 0) {
+                            gameObject->m_editorLayer2 += reoffsetValue;
+                        } else {
+                            gameObject->m_editorLayer2 = 0;
+                        }
+
+                        affectedObjects++;
+                    }
+                } else {
+                    if (vecContains(layersToAffect, gameObject->m_editorLayer)) {
+                        if (gameObject->m_editorLayer + reoffsetValue >= 0) {
+                            gameObject->m_editorLayer += reoffsetValue;
+                        } else {
+                            gameObject->m_editorLayer = 0;
+                        }
+
+                        affectedObjects++;
+                    }
+                }
             }
         }
 
-        // copying all objects (because we wanna do undo action)
-        std::string objectStrings = "";
+        log::debug("{} objects were affected", affectedObjects);
 
-        if (originalObjects->count() <= 0) {
+        if (affectedObjects <= 0) {
             geode::Notification::create("No layers were affected (maybe they are empty?)", NotificationIcon::Info, 1.5f)->show();
-            this->onClose(sender);
-            
-            return;
+        } else {
+            geode::Notification::create("Specified layers were reoffseted", NotificationIcon::Success, 1.5f)->show();
         }
 
-        for (int i = 0 ; i < originalObjects->count() ; i++) {
-			auto* gameObject = typeinfo_cast<GameObject*>(originalObjects->objectAtIndex(i));
-				
-			if (!gameObject) {
-				auto* startposObject = typeinfo_cast<StartPosObject*>(originalObjects->objectAtIndex(i));
-				if (!startposObject) {
-					FLAlertLayer::create("Error", "Unknown object type found. Please let the developer know about this bug.", "OK")->show();
-					return;
-				}
-
-                auto objectString = static_cast<std::string>(startposObject->getSaveString(GJBaseGameLayer::get())) + ";";
-			    objectStrings += objectString;
-                continue;
-			}
-
-			auto objectString = static_cast<std::string>(gameObject->getSaveString(GJBaseGameLayer::get())) + ";";
-			objectStrings += objectString;
-		}
-        
-        auto newObjects = lel->createObjectsFromString(gd::string(objectStrings), true, true);
-
-        // now we can delete previous objects
-        lel->m_undoObjects->addObject(UndoObject::createWithArray(originalObjects, UndoCommand::DeleteMulti));
-        
-        for (int i = 0 ; i < originalObjects->count() ; ++i) {
-            auto* gameObject = typeinfo_cast<GameObject*>(originalObjects->objectAtIndex(i));
-
-            if (!gameObject) {
-                auto* startposObject = typeinfo_cast<StartPosObject*>(originalObjects->objectAtIndex(i));
-				if (!startposObject) {
-					FLAlertLayer::create("Error", "Unknown object type found. Please let the developer know about this bug.", "OK")->show();
-					return;
-				}
-
-                lel->removeObject(startposObject, true);
-                continue;
-            }
-
-            lel->removeObject(gameObject, true);
-        }
-
-        lel->m_editorUI->deselectAll();
-        lel->m_undoObjects->addObject(UndoObject::createWithArray(originalObjects, UndoCommand::DeleteMulti));
-
-        // now we can modify new objects
-        for (int i = 0 ; i < newObjects->count() ; ++i) {
-            auto* gameObject = typeinfo_cast<GameObject*>(newObjects->objectAtIndex(i));
-
-            if (!gameObject) {
-                auto* startposObject = typeinfo_cast<StartPosObject*>(newObjects->objectAtIndex(i));
-				if (!startposObject) {
-					FLAlertLayer::create("Error", "Unknown object type found. Please let the developer know about this bug.", "OK")->show();
-					return;
-				}
-
-                if (editorLayer2) {
-                    if (startposObject->m_editorLayer2 + reoffsetValue >= 0) {
-                        startposObject->m_editorLayer2 = startposObject->m_editorLayer2 + reoffsetValue;
-                    } else {
-                        startposObject->m_editorLayer2 = 0;
-                    }
-                } else {
-                    if (startposObject->m_editorLayer + reoffsetValue >= 0) {
-                        startposObject->m_editorLayer = startposObject->m_editorLayer + reoffsetValue;
-                    } else {
-                        startposObject->m_editorLayer = 0;
-                    }
-                }
-
-                continue;
-            }
-
-            if (editorLayer2) {
-                if (gameObject->m_editorLayer2 + reoffsetValue >= 0) {
-                    gameObject->m_editorLayer2 = gameObject->m_editorLayer2 + reoffsetValue;
-                } else {
-                    gameObject->m_editorLayer2 = 0;
-                }
-            } else {
-                if (gameObject->m_editorLayer + reoffsetValue >= 0) {
-                    gameObject->m_editorLayer = gameObject->m_editorLayer + reoffsetValue;
-                } else {
-                    gameObject->m_editorLayer = 0;
-                }
-            }   
-        }
-
-        lel->m_undoObjects->addObject(UndoObject::createWithArray(newObjects, UndoCommand::Paste));
-        lel->m_editorUI->selectObjects(newObjects, true);
-
-        geode::Notification::create("Specified layers were reoffseted", NotificationIcon::Success, 1.5f)->show();
-        this->onClose(sender);
+        return true;
         
     }
 
@@ -296,6 +344,7 @@ public:
     TextInput* layersField;
     TextInput* reoffsetCountField;
     CCMenuItemToggler* editorLayer2Toggle;
+    CCMenuItemToggler* onlySelectedToggle;
 
     static ReoffsetLayersPopup* create() {
         auto ret = new ReoffsetLayersPopup();

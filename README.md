@@ -7,7 +7,7 @@ This mod is designed to solve this and make empty layers not a big problem.
 ## Description
 
 This mod adds a new button in edit tab menu in the editor, where you can specify layers to move and the value by which they should be moved.
-It also supports changing the editor layer 2 property as well.
+It also supports changing the editor layer 2 property as well, as well as offsetting only selected objects.
 
 ## How to use
 
@@ -16,12 +16,15 @@ It also supports changing the editor layer 2 property as well.
 3. Find a new reoffset button added by the mod and click on it.
 4. Set the needed layers as regular values or ranges, you can divide them by a comma.
 5. Set the reoffset value (can be a negative number).
-6. Hit the editor layer 2 checkbox if you wish to change the editor layer 2, not the regular layer.
-7. Confirm the changes and see the mod do the job! (you can also undo the changes if you mess up)
+6. Change the editor layer 2 only and selected objects only settings if you wish.
+7. Confirm the changes and see the mod do the job!
+
+This mod does not allow you to undo the action (because I couldn't fix bugs related to that), so be sure to recheck everything before making changes.
+If you understand that and you wish to remove the warning popup, you can do that in the mod settings.
 
 ## Compatibility
 
-I have many editor mods installed and I never ran into any issues with them. If there is any incompatibility, let me know by creating an issue on [GitHub repository](https://github.com/zL4mpY/layers-offset-mod) or writing me in Discord DMs (eni.meow).
+I have many editor mods installed and I never ran into any incompatibilities with them. If there is any, let me know by creating an issue on [GitHub repository](https://github.com/zL4mpY/layers-offset-mod) or writing me in Discord DMs (eni.meow).
 
 ## Keybinds
 

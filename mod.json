@@ -8,7 +8,7 @@
 	},
 	"id": "enimeoww.layers-offset",
 	"name": "Layers Offset",
-	"version": "v1.0.0",
+	"version": "v1.1.0",
 	"developer": "enimeoww",
 	"description": "Easily reoffset your layers",
 	"dependencies": {
@@ -25,6 +25,12 @@
 		}
 	},
 	"settings": {
+		"show-warning": {
+			"type": "bool",
+			"name": "Show Warning",
+			"description": "Show the confirmation popup before reoffsetting the layers.",
+			"default": true
+		},
 		"reoffset-layers-keybind": {
 			"type": "keybind",
 			"name": "Reoffset Layers",
