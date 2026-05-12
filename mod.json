@@ -14,6 +14,9 @@
 	"dependencies": {
 		"geode.node-ids": ">=v1.23.3"
 	},
+	"links": {
+		"source": "https://github.com/zL4mpY/layers-offset-mod"
+	},
 	"resources": {
 		"spritesheets": {
 			"ReoffsetButton": [
@@ -28,5 +31,6 @@
 			"category": "editor",
 			"default": []
 		}
-	}
+	},
+	"tags": ["editor", "offline", "enhancement"]
 }
