@@ -203,12 +203,45 @@ protected:
         std::vector<int> layersToAffect;
         int affectedObjects = 0;
 
+        std::string errorMessage = "The reoffset field is invalid.\nPlease ensure its format follows the examples' format.\n(ex. 1, -1, 2, -3)";
+
         auto lel = LevelEditorLayer::get();
 
         auto layersFieldValue = this->layersField->getString();
         auto reoffsetCountFieldValue = this->reoffsetCountField->getString();
         auto editorLayer2 = this->editorLayer2Toggle->isToggled();
         auto onlySelected = this->onlySelectedToggle->isToggled();
+
+        /*
+            validating reoffset field first because that should take less time to process
+            (what if user wants to make a huge range of layers but he messes up only with this field)
+        */
+        reoffsetCountFieldValue = geode::utils::string::replace(reoffsetCountFieldValue, " ", "");
+
+        // if string has 2+ signs or if it has a sign but it's placed incorrectly = bad (why would someone ever do that)
+        if ((geode::utils::string::count(reoffsetCountFieldValue, '-') > 1) | ((geode::utils::string::count(reoffsetCountFieldValue, '-') == 1) && (reoffsetCountFieldValue[0] != '-'))) {
+            reoffsetFieldGood = false;
+        }
+        
+        // trying to parse the number from the field
+        auto reoffsetValueRes = geode::utils::numFromString<int>(reoffsetCountFieldValue);
+
+        if (!reoffsetValueRes) reoffsetFieldGood = false;
+
+        if (!reoffsetFieldGood) {
+            geode::Notification::create(errorMessage, NotificationIcon::Error, 3.f)->show();
+            return false;
+        }
+
+        int reoffsetValue = *reoffsetValueRes;
+
+        // ensure the value is in the acceptable range
+        if ((reoffsetValue > 32767) || (reoffsetValue < -32767)) {
+            errorMessage = "Please ensure the reoffset value is in\nthe range between -32767 and 32767.";
+            geode::Notification::create(errorMessage, NotificationIcon::Error, 3.f)->show();
+            return false;
+        }
+        
 
         // validating layers field
         layersFieldValue = geode::utils::string::replace(layersFieldValue, " ", "");
@@ -222,6 +255,7 @@ protected:
                 // if 2+ hyphens = bad
                 if (geode::utils::string::count(layerFieldVal, '-') > 1) {
                     layerFieldGood = false;
+                    errorMessage = "The layer field is invalid.\nPlease ensure their format follows the examples' format.\n(ex. 0, 1, 4-6, 7-9)";
                     break;
                 } else {
                     // if the range contains empty elements = bad
@@ -229,6 +263,7 @@ protected:
                         return s.empty();
                     })) {
                         layerFieldGood = false;
+                        errorMessage = "The layer field is invalid.\nPlease ensure their format follows the examples' format.\n(ex. 0, 1, 4-6, 7-9)";
                         break;
                     }
                 }
@@ -238,6 +273,7 @@ protected:
 
                 if (!layerRangeBeginRes || !layerRangeEndRes) {
                     layerFieldGood = false;
+                    errorMessage = "The layer field is invalid.\nPlease ensure their format follows the examples' format.\n(ex. 0, 1, 4-6, 7-9)";
                     break;
                 }
 
@@ -247,14 +283,22 @@ protected:
                 // if layer range begin greater than its end = bad
                 if (layerRangeBegin >= layerRangeEnd) {
                     layerFieldGood = false;
+                    errorMessage = "Please ensure the layer range beginning is less than its end.";
+                    break;
+                }
+
+                // if layer range is beyond allowed limits
+                if ((layerRangeBegin < 0) || (layerRangeEnd > 32767)) {
+                    layerFieldGood = false;
+                    errorMessage = "Please ensure the layers are in\nthe range between 0 and 32767.";
                     break;
                 }
 
                 for (int i = layerRangeBegin; i <= layerRangeEnd; ++i) {
                     // if layer value is negative = bad
-                    // ALSO bad if it's above short upper limit
-                    if ((i < 0) || (i > 32767)) {
+                    if (i < 0) {
                         layerFieldGood = false;
+                        errorMessage = "Please ensure the layers are in\nthe range between 0 and 32767.";
                         break;
                     }
 
@@ -269,6 +313,7 @@ protected:
                 auto layerRes = geode::utils::numFromString<int>(layerFieldVal);
                 if (!layerRes) {
                     layerFieldGood = false;
+                    errorMessage = "The layer field is invalid.\nPlease ensure their format follows the examples' format.\n(ex. 0, 1, 4-6, 7-9)";
                     break;
                 }
 
@@ -278,6 +323,7 @@ protected:
                 // ALSO bad if it's above short upper limit
                 if ((layer < 0) || (layer > 32767)) {
                     layerFieldGood = false;
+                    errorMessage = "Please ensure the layers are in\nthe range between 0 and 32767.";
                     break;
                 }
 
@@ -288,37 +334,10 @@ protected:
         }
 
         if (!layerFieldGood) {
-            geode::Notification::create("The layer field is invalid.\nPlease ensure their format follows the examples' format.\n(ex. 0, 1, 4-6, 7-9)", NotificationIcon::Error, 3.f)->show();
+            geode::Notification::create(errorMessage, NotificationIcon::Error, 3.f)->show();
             return false;
         }
 
-        // validating reoffset field (nothing really to validate but saving the boolean for probable future updates)
-        // i was wrong lol there IS something to validate
-        reoffsetCountFieldValue = geode::utils::string::replace(reoffsetCountFieldValue, " ", "");
-
-        // if string has 2+ signs or if it has a sign but it's placed incorrectly = bad (why would someone ever do that)
-        if ((geode::utils::string::count(reoffsetCountFieldValue, '-') > 1) | ((geode::utils::string::count(reoffsetCountFieldValue, '-') == 1) && (reoffsetCountFieldValue[0] != '-'))) {
-            reoffsetFieldGood = false;
-        }
-        
-        // trying to parse the number from the field
-        auto reoffsetValueRes = geode::utils::numFromString<int>(reoffsetCountFieldValue);
-
-        if (!reoffsetValueRes) reoffsetFieldGood = false;
-
-        if (!reoffsetFieldGood) {
-            geode::Notification::create("The reoffset field is invalid.\nPlease ensure its format follows the examples' format.\n(ex. 1, -1, 2, -3)", NotificationIcon::Error, 3.f)->show();
-            return false;
-        }
-
-        int reoffsetValue = *reoffsetValueRes;
-
-        // ensure the value is in the acceptable range
-        if ((reoffsetValue > 32767) || (reoffsetValue < -32767)) {
-            geode::Notification::create("Please ensure the reoffset value is in\nthe range between -32767 and 32767.", NotificationIcon::Error, 3.f)->show();
-            return false;
-        }
-        
         auto objectsToSearchFor = lel->getAllObjects();
         if (onlySelected) objectsToSearchFor = lel->m_editorUI->getSelectedObjects();
 
