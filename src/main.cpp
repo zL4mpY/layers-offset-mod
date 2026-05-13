@@ -51,12 +51,32 @@ protected:
         editorLayer2ToggleLabel->setScale(0.2f);
         editorLayer2ToggleLabel->setPosition(center2 + ccp(85.f, 35.f));
 
+        auto infoSprite = CCSprite::createWithSpriteFrameName("GJ_infoIcon_001.png");
+        infoSprite->setScale(0.3f);
+
+        auto infoBtn = CCMenuItemSpriteExtra::create(
+            infoSprite,
+            this,
+            menu_selector(ReoffsetLayersPopup::onInfo)
+        );
+        infoBtn->setTag(1);
+        infoBtn->setPosition(center2 + ccp(110.f, 35.f));
+
         this->onlySelectedToggle = CCMenuItemToggler::createWithStandardSprites(this, nullptr, 0.5f);
         this->onlySelectedToggle->setPosition(center2 + ccp(85.f, -20.f));
 
-        auto onlySelectedToggleLabel = CCLabelBMFont::create("Only selected objects", "goldFont.fnt");
-        onlySelectedToggleLabel->setScale(0.15f);
-        onlySelectedToggleLabel->setPosition(center2 + ccp(85.f, -5.f));
+        auto onlySelectedToggleLabel = CCLabelBMFont::create("Only selected\nobjects", "goldFont.fnt");
+        onlySelectedToggleLabel->setAlignment(CCTextAlignment::kCCTextAlignmentCenter);
+        onlySelectedToggleLabel->setScale(0.2f);
+        onlySelectedToggleLabel->setPosition(center2 + ccp(85.f, -2.5f));
+
+        auto infoBtn2 = CCMenuItemSpriteExtra::create(
+            infoSprite,
+            this,
+            menu_selector(ReoffsetLayersPopup::onInfo)
+        );
+        infoBtn2->setTag(2);
+        infoBtn2->setPosition(center2 + ccp(110.f, -2.5f));
 
         auto confirmButtonSprite = ButtonSprite::create("Confirm");
         auto confirmButton = CCMenuItemSpriteExtra::create(confirmButtonSprite, this, menu_selector(ReoffsetLayersPopup::onConfirm));
@@ -69,16 +89,34 @@ protected:
         
         m_buttonMenu->addChild(this->onlySelectedToggle);
         m_buttonMenu->addChild(this->editorLayer2Toggle);
+        m_buttonMenu->addChild(infoBtn);
+        m_buttonMenu->addChild(infoBtn2);
         m_buttonMenu->addChild(confirmButton);
 
         return true;
+    }
+
+    void onInfo(CCObject* sender) {
+        std::string message;
+
+        switch (sender->getTag()) {
+            case 1: message = "Make changes <cy>only</c> to the editor layer 2 property."; break;
+            case 2: message = "Affect <cy>only</c> selected objects."; break;
+        }
+
+        FLAlertLayer::create(
+            "Info",
+            message,
+            "OK"
+        )->show();
     }
 
     void onConfirm(CCObject* sender) {
         if (showWarning) {
             geode::createQuickPopup(
                 "Warning", 
-                "This action <cr>cannot</c> be undone. Do you <cy>really</c> want to proceed?",
+                "This action <cr>cannot</c> be undone. Do you <cy>really</c> want to proceed?\n"\
+                "(you can disable the confirmation popup in the mod settings if you want)",
                 "No", "Yes",
                 [this, sender](auto, bool btn2) {
                     if (btn2) {
@@ -91,10 +129,79 @@ protected:
         }
     }
 
+    bool reoffsetObjects(CCObject* object, std::vector<int> layersToAffect, int reoffsetValue, bool editorLayer2, int& affectedObjects) {
+        auto* gameObject = typeinfo_cast<GameObject*>(object);
+
+        if (!gameObject) {
+            auto* startposObject = typeinfo_cast<StartPosObject*>(object);
+            if (!startposObject) {
+                FLAlertLayer::create("Error", "Unknown object type found. Please let the developer know about this bug.", "OK")->show();
+                return false;
+            }
+            
+            if (editorLayer2) {
+                if (vecContains(layersToAffect, startposObject->m_editorLayer2)) {
+                    if (startposObject->m_editorLayer2 + reoffsetValue > 32767) {
+                        startposObject->m_editorLayer2 = 32767;
+                    } else if (startposObject->m_editorLayer2 + reoffsetValue < 0) {
+                        startposObject->m_editorLayer2 = 0;
+                    } else {
+                        startposObject->m_editorLayer2 += reoffsetValue;
+                    }
+
+                    affectedObjects++;
+                }
+            } else {
+                if (vecContains(layersToAffect, startposObject->m_editorLayer)) {
+                    if (startposObject->m_editorLayer + reoffsetValue > 32767) {
+                        startposObject->m_editorLayer = 32767;
+                    } else if (startposObject->m_editorLayer + reoffsetValue < 0) {
+                        startposObject->m_editorLayer = 0;
+                    } else {
+                        startposObject->m_editorLayer += reoffsetValue;
+                    }
+
+                    affectedObjects++;
+                }
+            }
+
+            return true;
+        }
+
+        if (editorLayer2) {
+            if (vecContains(layersToAffect, gameObject->m_editorLayer2)) {
+                if (gameObject->m_editorLayer2 + reoffsetValue > 32767) {
+                    gameObject->m_editorLayer2 = 32767;
+                } else if (gameObject->m_editorLayer + reoffsetValue < 0) {
+                    gameObject->m_editorLayer2 = 0;
+                } else {
+                    gameObject->m_editorLayer2 += reoffsetValue;
+                }
+
+                affectedObjects++;
+            }
+        } else {
+            if (vecContains(layersToAffect, gameObject->m_editorLayer)) {
+                if (gameObject->m_editorLayer + reoffsetValue > 32767) {
+                    gameObject->m_editorLayer = 32767;
+                } else if (gameObject->m_editorLayer + reoffsetValue < 0) {
+                    gameObject->m_editorLayer = 0;
+                } else {
+                    gameObject->m_editorLayer += reoffsetValue;
+                }
+
+                affectedObjects++;
+            }
+        }
+
+        return true;
+    }
+
     bool perform() {
         bool layerFieldGood = true;
         bool reoffsetFieldGood = true;
         std::vector<int> layersToAffect;
+        int affectedObjects = 0;
 
         auto lel = LevelEditorLayer::get();
 
@@ -145,7 +252,8 @@ protected:
 
                 for (int i = layerRangeBegin; i <= layerRangeEnd; ++i) {
                     // if layer value is negative = bad
-                    if (i < 0) {
+                    // ALSO bad if it's above short upper limit
+                    if ((i < 0) || (i > 32767)) {
                         layerFieldGood = false;
                         break;
                     }
@@ -167,7 +275,8 @@ protected:
                 int layer = *layerRes;
 
                 // if layer is negative = bad
-                if (layer < 0) {
+                // ALSO bad if it's above short upper limit
+                if ((layer < 0) || (layer > 32767)) {
                     layerFieldGood = false;
                     break;
                 }
@@ -184,6 +293,7 @@ protected:
         }
 
         // validating reoffset field (nothing really to validate but saving the boolean for probable future updates)
+        // i was wrong lol there IS something to validate
         reoffsetCountFieldValue = geode::utils::string::replace(reoffsetCountFieldValue, " ", "");
 
         // if string has 2+ signs or if it has a sign but it's placed incorrectly = bad (why would someone ever do that)
@@ -191,6 +301,7 @@ protected:
             reoffsetFieldGood = false;
         }
         
+        // trying to parse the number from the field
         auto reoffsetValueRes = geode::utils::numFromString<int>(reoffsetCountFieldValue);
 
         if (!reoffsetValueRes) reoffsetFieldGood = false;
@@ -201,131 +312,20 @@ protected:
         }
 
         int reoffsetValue = *reoffsetValueRes;
+
+        // ensure the value is in the acceptable range
+        if ((reoffsetValue > 32767) || (reoffsetValue < -32767)) {
+            geode::Notification::create("Please ensure the reoffset value is in\nthe range between -32767 and 32767.", NotificationIcon::Error, 3.f)->show();
+            return false;
+        }
         
-        auto allObjects = lel->getAllObjects();
+        auto objectsToSearchFor = lel->getAllObjects();
+        if (onlySelected) objectsToSearchFor = lel->m_editorUI->getSelectedObjects();
 
         log::debug("Reoffsetting layers {} by {}", fmt::join(layersToAffect, ", "), reoffsetValue);
 
-        int affectedObjects = 0;
-
-        if (!onlySelected) {
-            for (int i = 0 ; i < allObjects->count() ; ++i) {
-                auto* gameObject = typeinfo_cast<GameObject*>(allObjects->objectAtIndex(i));
-
-                if (!gameObject) {
-                    auto* startposObject = typeinfo_cast<StartPosObject*>(allObjects->objectAtIndex(i));
-                    if (!startposObject) {
-                        FLAlertLayer::create("Error", "Unknown object type found. Please let the developer know about this bug.", "OK")->show();
-                        return false;
-                    }
-                    
-                    if (editorLayer2) {
-                        if (vecContains(layersToAffect, startposObject->m_editorLayer2)) {
-                            if (startposObject->m_editorLayer2 + reoffsetValue >= 0) {
-                                startposObject->m_editorLayer2 += reoffsetValue;
-                            } else {
-                                startposObject->m_editorLayer2 = 0;
-                            }
-
-                            affectedObjects++;
-                        }
-                    } else {
-                        if (vecContains(layersToAffect, startposObject->m_editorLayer)) {
-                            if (startposObject->m_editorLayer + reoffsetValue >= 0) {
-                                startposObject->m_editorLayer += reoffsetValue;
-                            } else {
-                                startposObject->m_editorLayer = 0;
-                            }
-
-                            affectedObjects++;
-                        }
-                    }
-
-                    continue;
-                }
-
-                if (editorLayer2) {
-                    if (vecContains(layersToAffect, gameObject->m_editorLayer2)) {
-                        if (gameObject->m_editorLayer2 + reoffsetValue >= 0) {
-                            gameObject->m_editorLayer2 += reoffsetValue;
-                        } else {
-                            gameObject->m_editorLayer2 = 0;
-                        }
-
-                        affectedObjects++;
-                    }
-                } else {
-                    if (vecContains(layersToAffect, gameObject->m_editorLayer)) {
-                        if (gameObject->m_editorLayer + reoffsetValue >= 0) {
-                            gameObject->m_editorLayer += reoffsetValue;
-                        } else {
-                            gameObject->m_editorLayer = 0;
-                        }
-
-                        affectedObjects++;
-                    }
-                }
-            }
-        } else {
-            auto selectedObjs = lel->m_editorUI->getSelectedObjects();
-
-            for (int i = 0 ; i < selectedObjs->count() ; ++i) {
-                auto* gameObject = typeinfo_cast<GameObject*>(selectedObjs->objectAtIndex(i));
-
-                if (!gameObject) {
-                    auto* startposObject = typeinfo_cast<StartPosObject*>(selectedObjs->objectAtIndex(i));
-                    if (!startposObject) {
-                        FLAlertLayer::create("Error", "Unknown object type found. Please let the developer know about this bug.", "OK")->show();
-                        return false;
-                    }
-
-                    if (editorLayer2) {
-                        if (vecContains(layersToAffect, startposObject->m_editorLayer2)) {
-                            if (startposObject->m_editorLayer2 + reoffsetValue >= 0) {
-                                startposObject->m_editorLayer2 += reoffsetValue;
-                            } else {
-                                startposObject->m_editorLayer2 = 0;
-                            }
-
-                            affectedObjects++;
-                        }
-                    } else {
-                        if (vecContains(layersToAffect, startposObject->m_editorLayer)) {
-                            if (startposObject->m_editorLayer + reoffsetValue >= 0) {
-                                startposObject->m_editorLayer += reoffsetValue;
-                            } else {
-                                startposObject->m_editorLayer = 0;
-                            }
-
-                            affectedObjects++;
-                        }
-                    }
-                    
-                    continue;
-                }
-
-                if (editorLayer2) {
-                    if (vecContains(layersToAffect, gameObject->m_editorLayer2)) {
-                        if (gameObject->m_editorLayer2 + reoffsetValue >= 0) {
-                            gameObject->m_editorLayer2 += reoffsetValue;
-                        } else {
-                            gameObject->m_editorLayer2 = 0;
-                        }
-
-                        affectedObjects++;
-                    }
-                } else {
-                    if (vecContains(layersToAffect, gameObject->m_editorLayer)) {
-                        if (gameObject->m_editorLayer + reoffsetValue >= 0) {
-                            gameObject->m_editorLayer += reoffsetValue;
-                        } else {
-                            gameObject->m_editorLayer = 0;
-                        }
-
-                        affectedObjects++;
-                    }
-                }
-            }
+        for (int i = 0 ; i < objectsToSearchFor->count() ; ++i) {
+            if (!this->reoffsetObjects(objectsToSearchFor->objectAtIndex(i), layersToAffect, reoffsetValue, editorLayer2, affectedObjects)) break;
         }
 
         log::debug("{} objects were affected", affectedObjects);

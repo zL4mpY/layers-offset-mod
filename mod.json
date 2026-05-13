@@ -8,7 +8,7 @@
 	},
 	"id": "enimeoww.layers-offset",
 	"name": "Layers Offset",
-	"version": "v1.1.0",
+	"version": "v1.2.0",
 	"developer": "enimeoww",
 	"description": "Easily reoffset your layers",
 	"dependencies": {
